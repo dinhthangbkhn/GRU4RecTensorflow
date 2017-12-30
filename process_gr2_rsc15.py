@@ -32,7 +32,7 @@ def create_sessions(file_name):
 
 def write_sessions_to_file(file_target, sessions):
     """Write session that created to file"""
-    with open(file_target,"w") as file:
+    with open(file_target, "w") as file:
         for session in sessions:
             for item in session:
                 file.write(item+"\t")
