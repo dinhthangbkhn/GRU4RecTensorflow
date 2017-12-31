@@ -106,12 +106,13 @@ def dynamic_rnn_pred(x, weight, bias, seqlen):
     outputs = tf.reshape(outputs, [-1, n_hidden])
     # outputs = outputs[0]
     # print(outputs)
-    return tf.matmul(outputs, weight["out"]) + bias["out"]
+    return tf.sigmoid(tf.matmul(outputs, weight["out"]) + bias["out"])
 pred = dynamic_rnn_pred(x, weight, bias, seqlen)
+pred = tf.reshape(pred, [batch_size, seq_max_len, n_items])
 print(pred)
 
 def loss_function(pred, target, length):
-    pred = tf.reshape(pred, [batch_size, seq_max_len, n_items])
+    
     # print(pred)
     cross_entronpy = target * tf.log(pred)
     # print(cross_entronpy)
@@ -129,5 +130,20 @@ def loss_function(pred, target, length):
 loss = loss_function(pred, y, seqlen)
 optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
 
-def Calc_recall_20(pred, target):
-    
+def calc_recall_20(pred, target, seqlen):
+    top_items = tf.nn.top_k(pred, 20).indices
+    top_items = top_items[0]
+    desire_index = tf.cast( tf.argmax(target,axis = 2), tf.int32) 
+    desire_index = desire_index[0]
+    accuracy = 0.0
+    for i in range(seq_max_len):
+        top_k_i = top_items[i]
+        accuracy += tf.cast(tf.equal(tf.reduce_sum(tf.cast(tf.equal(top_k_i,desire_index[i]),tf.float32)),1), tf.float32) 
+    accuracy /= tf.cast(seqlen,tf.float32)
+    # tf.nn.in_top_k(top_items, desire_index, 20)
+    # desire_index = tf.reshape(desire_index, [-1, n_hidden])
+    # print(top_items)
+    # print(desire_index)
+    return accuracy
+
+recall20 = calc_recall_20(pred, y, seqlen)
