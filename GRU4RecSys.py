@@ -13,7 +13,7 @@ FILE_ITEM = "../data/gr2-sessions/items.txt"
 NUM_ITEM = 37483
 
 #create one hot vector for each item
-def create_one_hot(file_item, num_item = NUM_ITEM):
+def create_one_hot_dict(file_item, num_item = NUM_ITEM):
     """
         input:
             file_item: file chứa dữ liệu item items.txt
@@ -23,7 +23,7 @@ def create_one_hot(file_item, num_item = NUM_ITEM):
     item_index = 0
     dict_item = {}
     with open(file_item, "r") as file:
-        print("begin read file and create vector one hot")
+        print("begin read file and create dict one hot")
         for line in file:
             item_str = line 
             item_one_hot = np.zeros(num_item)
@@ -35,11 +35,18 @@ def create_one_hot(file_item, num_item = NUM_ITEM):
         print("end read file and create vector one hot, \nNumber vector: " + str(item_index+1))
     return dict_item
 
+def convert_item_to_one_hot(items, dict_items):
+    one_hot_items = []
+    for item in items:
+        one_hot_items.append(dict_items[item])
+    one_hot_items = np.array(one_hot_items)
+    # print(one_hot_items.shape)
+    return one_hot_items
+
 #tao input dau vao
-def create_input_a_output(file_name, dict_item):
+def create_input_a_output(file_name):
     """
         file_name: file chua cac session train.txt hoac test.txt
-        dict_item: chuyen tu str --> numpy array
         output: 
             input cua model
             output cua model
@@ -52,20 +59,29 @@ def create_input_a_output(file_name, dict_item):
             session = []
             items_str = line.split("\t")[0:-1]
             for item in items_str:
-                session.append(dict_item[item])
+                session.append(item)
             model_input.append(session[0:-1])
             model_output.append(session[1:])
     print("Finish create input and output.")
-    return model_input, model_output
+    return np.array(model_input),np.array(model_output)
 
 # dictionary = create_one_hot(FILE_ITEM)
 # input, output = create_input_a_output(FILE_TEST, dictionary)
 
+def shuffle_data(data_input, data_target):
+    """Shuffle data"""
+    print("Shuffle the data")
+    # print(data_input[0])
+    # print(data_target[0])
+    shuffled_ix = np.random.permutation(np.arange(len(data_target)))
+    data_input_shuffle = data_input[shuffled_ix]
+    data_target_shuffle = data_target[shuffled_ix]
+    return data_input_shuffle, data_target_shuffle
 #build model
 
 # Parameters
 learning_rate = 0.01
-epochs = 10000
+epochs = 2
 batch_size = 128
 display_step = 200
 
@@ -88,8 +104,8 @@ def length_of_sequence(sequence):
     length = tf.cast(sum, tf.int32)
     return length
 
-x = tf.placeholder(tf.float32, [batch_size, seq_max_len, n_items], name = "X")
-y = tf.placeholder(tf.float32, [batch_size, seq_max_len, n_items], name = "Y")
+x = tf.placeholder(tf.float32, [batch_size, None, n_items], name = "X")
+y = tf.placeholder(tf.float32, [batch_size, None, n_items], name = "Y")
 seqlen = length_of_sequence(x)
 def dynamic_rnn_pred(x, weight, bias, seqlen):
     # create 2 LSTMCells
@@ -112,7 +128,6 @@ pred = tf.reshape(pred, [batch_size, seq_max_len, n_items])
 print(pred)
 
 def loss_function(pred, target, length):
-    
     # print(pred)
     cross_entronpy = target * tf.log(pred)
     # print(cross_entronpy)
@@ -147,3 +162,28 @@ def calc_recall_20(pred, target, seqlen):
     return accuracy
 
 recall20 = calc_recall_20(pred, y, seqlen)
+
+with tf.Session() as sess:
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    #get input data and output data
+    input_set, output_set = create_input_a_output(FILE_TEST)
+    dict_items = create_one_hot_dict(FILE_ITEM)
+    for _ in range(epochs):
+        #shuffle data
+        input_set, output_set = shuffle_data(input_set, output_set)
+        for i in range(len( input_set)):
+            # get curr data for input, output
+            curr_input = input_set[i]
+            curr_output = output_set[i]
+            
+            # convert to one-hot encoding
+            curr_input = np.array([convert_item_to_one_hot(curr_input, dict_items)]) 
+            curr_output = np.array([ convert_item_to_one_hot(curr_output, dict_items)]) 
+
+            # push one-hot encoding to model
+            _, cost, acc = sess.run([optimizer, loss, recall20], feed_dict={x: curr_input, y:curr_output})
+            print("Accuracy: " + str(acc))
+            print("Cost: " + str(cost))
+            print("\n\n")
+            # evaluate model      
