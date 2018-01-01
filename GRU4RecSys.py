@@ -35,10 +35,16 @@ def create_one_hot_dict(file_item, num_item = NUM_ITEM):
         print("end read file and create vector one hot, \nNumber vector: " + str(item_index+1))
     return dict_item
 
-def convert_item_to_one_hot(items, dict_items):
+def convert_item_to_one_hot(items, dict_items, seq_max_len, n_items):
+    """convert item to one hot and append zeros vector to fit with tensor input"""
     one_hot_items = []
+    items_len = len(items)
     for item in items:
+        # print(dict_items[item].shape)
         one_hot_items.append(dict_items[item])
+    for _ in range(seq_max_len-items_len):
+        # print(np.zeros(n_items).shape)
+        one_hot_items.append(np.zeros(n_items))
     one_hot_items = np.array(one_hot_items)
     # print(one_hot_items.shape)
     return one_hot_items
@@ -70,12 +76,13 @@ def create_input_a_output(file_name):
 
 def shuffle_data(data_input, data_target):
     """Shuffle data"""
-    print("Shuffle the data")
+    print("Shuffle the data ..")
     # print(data_input[0])
     # print(data_target[0])
     shuffled_ix = np.random.permutation(np.arange(len(data_target)))
     data_input_shuffle = data_input[shuffled_ix]
     data_target_shuffle = data_target[shuffled_ix]
+    print("End shuffle the data")
     return data_input_shuffle, data_target_shuffle
 #build model
 
@@ -86,9 +93,9 @@ batch_size = 128
 display_step = 200
 
 # Network Parameters
-seq_max_len = 30 # Sequence max length
-n_hidden = 64 # hidden layer num of features
-n_items = 37843 #number of items
+seq_max_len = 80 # Sequence max length
+n_hidden = 128 # hidden layer num of features
+n_items = 37483 #number of items
 batch_size = 1
 
 weight = {
@@ -125,7 +132,7 @@ def dynamic_rnn_pred(x, weight, bias, seqlen):
     return tf.sigmoid(tf.matmul(outputs, weight["out"]) + bias["out"])
 pred = dynamic_rnn_pred(x, weight, bias, seqlen)
 pred = tf.reshape(pred, [batch_size, seq_max_len, n_items])
-print(pred)
+# print(pred)
 
 def loss_function(pred, target, length):
     # print(pred)
@@ -151,17 +158,17 @@ def calc_recall_20(pred, target, seqlen):
     desire_index = tf.cast( tf.argmax(target,axis = 2), tf.int32) 
     desire_index = desire_index[0]
     accuracy = 0.0
+    print(desire_index)
+    used = tf.cast(1-tf.sign(tf.reduce_max( tf.abs(target), axis = 2)), tf.int32)[0]
+    desire_index = desire_index - used
+    print(desire_index)
     for i in range(seq_max_len):
         top_k_i = top_items[i]
         accuracy += tf.cast(tf.equal(tf.reduce_sum(tf.cast(tf.equal(top_k_i,desire_index[i]),tf.float32)),1), tf.float32) 
-    accuracy /= tf.cast(seqlen,tf.float32)
-    # tf.nn.in_top_k(top_items, desire_index, 20)
-    # desire_index = tf.reshape(desire_index, [-1, n_hidden])
-    # print(top_items)
-    # print(desire_index)
-    return accuracy
+    # accuracy = tf.cast(seqlen,tf.float32)
+    return accuracy, top_items, desire_index
 
-recall20 = calc_recall_20(pred, y, seqlen)
+recall20, top_items, desire_index = calc_recall_20(pred, y, seqlen)
 
 with tf.Session() as sess:
     init = tf.global_variables_initializer()
@@ -178,12 +185,17 @@ with tf.Session() as sess:
             curr_output = output_set[i]
             
             # convert to one-hot encoding
-            curr_input = np.array([convert_item_to_one_hot(curr_input, dict_items)]) 
-            curr_output = np.array([ convert_item_to_one_hot(curr_output, dict_items)]) 
-
+            curr_input = np.array([convert_item_to_one_hot(curr_input, dict_items, seq_max_len, n_items)]) 
+            curr_output = np.array([ convert_item_to_one_hot(curr_output, dict_items, seq_max_len, n_items)]) 
+            # print(curr_output.shape)
             # push one-hot encoding to model
             _, cost, acc = sess.run([optimizer, loss, recall20], feed_dict={x: curr_input, y:curr_output})
-            print("Accuracy: " + str(acc))
-            print("Cost: " + str(cost))
-            print("\n\n")
+            if i%display_step != 0:
+                print("Step: " + str(i))
+                print("Accuracy: " + str(acc))
+                # print('Top items: ' + str(top))
+                # print('Desired index: ' + str(desire))
+                # print("Sequence length:" + str(seqlen_run))
+                print("Cost: " + str(cost))
+                print("\n\n")
             # evaluate model      
