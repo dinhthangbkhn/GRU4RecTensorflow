@@ -64,4 +64,7 @@ def run_process_gr2_rsc15():
     num_sess, sessions = create_sessions(PATH_TO_TRAIN_GR2RSC15)
     write_sessions_to_file(PATH_TO_TRAIN_SESSION, sessions)
     write_list_item_to_file(PATH_TO_TRAIN_GR2RSC15, PATH_TO_LIST_ITEM)
+    # write_list_item_to_file(PATH_TO_TEST_GR2RSC15, PATH_TO_LIST_ITEM)
     return
+
+# run_process_gr2_rsc15()

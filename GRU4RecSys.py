@@ -6,11 +6,13 @@ RNN for session based recommend system
 import tensorflow as tf 
 import numpy as np 
 import matplotlib.pyplot as plt 
+import win_unicode_console
+win_unicode_console.enable()
 
 FILE_TRAIN = "../data/gr2-sessions/train.txt"
 FILE_TEST = "../data/gr2-sessions/test.txt"
 FILE_ITEM = "../data/gr2-sessions/items.txt"
-NUM_ITEM = 37483
+NUM_ITEM = 6751
 
 #create one hot vector for each item
 def create_one_hot_dict(file_item, num_item = NUM_ITEM):
@@ -88,14 +90,13 @@ def shuffle_data(data_input, data_target):
 
 # Parameters
 learning_rate = 0.01
-epochs = 2
-batch_size = 128
-display_step = 200
+epochs = 5
+display_step = 30
 
 # Network Parameters
 seq_max_len = 80 # Sequence max length
-n_hidden = 128 # hidden layer num of features
-n_items = 37483 #number of items
+n_hidden = 100 # hidden layer num of features
+n_items = NUM_ITEM #number of items
 batch_size = 1
 
 weight = {
@@ -165,7 +166,7 @@ def calc_recall_20(pred, target, seqlen):
     for i in range(seq_max_len):
         top_k_i = top_items[i]
         accuracy += tf.cast(tf.equal(tf.reduce_sum(tf.cast(tf.equal(top_k_i,desire_index[i]),tf.float32)),1), tf.float32) 
-    # accuracy = tf.cast(seqlen,tf.float32)
+    accuracy /= tf.cast(seqlen,tf.float32)
     return accuracy, top_items, desire_index
 
 recall20, top_items, desire_index = calc_recall_20(pred, y, seqlen)
@@ -173,6 +174,7 @@ recall20, top_items, desire_index = calc_recall_20(pred, y, seqlen)
 with tf.Session() as sess:
     init = tf.global_variables_initializer()
     sess.run(init)
+    total_accuracy = 0
     #get input data and output data
     input_set, output_set = create_input_a_output(FILE_TEST)
     dict_items = create_one_hot_dict(FILE_ITEM)
@@ -190,12 +192,15 @@ with tf.Session() as sess:
             # print(curr_output.shape)
             # push one-hot encoding to model
             _, cost, acc = sess.run([optimizer, loss, recall20], feed_dict={x: curr_input, y:curr_output})
-            if i%display_step != 0:
+            total_accuracy += acc
+            # curr_acc_of_all = np.sum(np.array(total_accuracy))/len(total_accuracy)
+            if (i+1) % display_step == 0:
                 print("Step: " + str(i))
                 print("Accuracy: " + str(acc))
-                # print('Top items: ' + str(top))
-                # print('Desired index: ' + str(desire))
-                # print("Sequence length:" + str(seqlen_run))
+                print("Curr accuracy from begin: " + str(total_accuracy/display_step))
                 print("Cost: " + str(cost))
                 print("\n\n")
-            # evaluate model      
+                cost = 0
+                curr_acc_of_all = 0
+    # total_accuracy = np.sum(np.array(total_accuracy))/len(total_accuracy)
+    print("\n\n\nFinish: \n Acc:{}\n Cost:{}\n".format(total_accuracy, cost))
