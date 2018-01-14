@@ -10,7 +10,7 @@ import win_unicode_console
 win_unicode_console.enable()
 
 FILE_TRAIN = "../data/gr2-sessions/train.txt"
-FILE_TEST = "../data/gr2-sessions/test.txt"
+FILE_TEST = "../data/gr2-sessions/new_test_20.txt"
 FILE_ITEM = "../data/gr2-sessions/items.txt"
 NUM_ITEM = 6751
 
@@ -88,14 +88,14 @@ def shuffle_data(data_input, data_target):
     return data_input_shuffle, data_target_shuffle
 #build model
 
-# Parameters
-learning_rate = 0.01
-epochs = 5
-display_step = 30
+# Parameters #ToDo: cap nhat lai luu tham so va ket qua
+learning_rate = 0.005
+epochs = 10
+display_step = 100
 
 # Network Parameters
-seq_max_len = 80 # Sequence max length
-n_hidden = 100 # hidden layer num of features
+seq_max_len = 20 # Sequence max length
+n_hidden = 150 # hidden layer num of features
 n_items = NUM_ITEM #number of items
 batch_size = 1
 
@@ -151,56 +151,98 @@ def loss_function(pred, target, length):
     # print(cross_entronpy)
     return cross_entronpy 
 loss = loss_function(pred, y, seqlen)
-optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(loss)
+# print(pred)
+# optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+top_items = tf.nn.top_k(pred, 20).indices
+# def calc_recall_20(pred, target, seqlen):
+#     top_items = tf.nn.top_k(pred, 20).indices
+#     top_items = top_items[0]
+#     desire_index = tf.cast( tf.argmax(target,axis = 2), tf.int32) 
+#     desire_index = desire_index[0]
+#     accuracy = 0.0
+#     # print(desire_index)
+#     used = tf.cast(1-tf.sign(tf.reduce_max( tf.abs(target), axis = 2)), tf.int32)[0]
+#     desire_index = desire_index - used
+#     # print(desire_index)
+#     for i in range(seq_max_len):
+#         top_k_i = top_items[i]
+#         accuracy += tf.cast(tf.equal(tf.reduce_sum(tf.cast(tf.equal(top_k_i,desire_index[i]),tf.float32)),1), tf.float32) 
+#     accuracy /= tf.cast(seqlen,tf.float32)
+#     return accuracy, top_items, desire_index
 
-def calc_recall_20(pred, target, seqlen):
-    top_items = tf.nn.top_k(pred, 20).indices
-    top_items = top_items[0]
-    desire_index = tf.cast( tf.argmax(target,axis = 2), tf.int32) 
-    desire_index = desire_index[0]
-    accuracy = 0.0
-    print(desire_index)
-    used = tf.cast(1-tf.sign(tf.reduce_max( tf.abs(target), axis = 2)), tf.int32)[0]
-    desire_index = desire_index - used
-    print(desire_index)
-    for i in range(seq_max_len):
-        top_k_i = top_items[i]
-        accuracy += tf.cast(tf.equal(tf.reduce_sum(tf.cast(tf.equal(top_k_i,desire_index[i]),tf.float32)),1), tf.float32) 
-    accuracy /= tf.cast(seqlen,tf.float32)
-    return accuracy, top_items, desire_index
+# recall20, top_items, desire_index = calc_recall_20(pred, y, seqlen)
 
-recall20, top_items, desire_index = calc_recall_20(pred, y, seqlen)
+def recall20(top_k_items_index, y_output):
+    """ 
+    Calculate recall 20
+    
+    top_k_items: numpy array, shape (N, seqlen, k) (k=20)
+    y_output: numpy array, shape (N, seqlen, number item) (one hot encode)
+
+    ------------------------------
+    return:
+        recall@20
+    """
+    acc = 0.0
+    total = 0
+    # print(top_k_items_index.shape)
+    for i in range(top_k_items_index.shape[0]):
+        for j in range(top_k_items_index.shape[1]):
+            top_items = top_k_items_index[i][j]
+            # print(top_items)
+            one_hot = np.argmax(y_output[i][j])
+            if j < top_k_items_index.shape[1]-1 and np.argmax(y_output[i][j]) == 0 and np.argmax(y_output[i][j+1]) == 0:
+                continue
+            # print(one_hot)
+            total += 1
+            if one_hot in top_items:
+                acc += 1
+    recall = acc/total
+    # print(recall)
+    return recall
 
 with tf.Session() as sess:
+    
     init = tf.global_variables_initializer()
     sess.run(init)
     total_accuracy = 0
+    total_cost = 0
+    
     #get input data and output data
     input_set, output_set = create_input_a_output(FILE_TEST)
     dict_items = create_one_hot_dict(FILE_ITEM)
+
     for _ in range(epochs):
         #shuffle data
         input_set, output_set = shuffle_data(input_set, output_set)
         for i in range(len( input_set)):
             # get curr data for input, output
+            # if (i) % display_step == 0:
+            #     print("Start getting input")
             curr_input = input_set[i]
             curr_output = output_set[i]
-            
+
+            # if (i) % display_step == 0:
+            #     print("Start convert to one hot")    
             # convert to one-hot encoding
             curr_input = np.array([convert_item_to_one_hot(curr_input, dict_items, seq_max_len, n_items)]) 
             curr_output = np.array([ convert_item_to_one_hot(curr_output, dict_items, seq_max_len, n_items)]) 
-            # print(curr_output.shape)
+            
             # push one-hot encoding to model
-            _, cost, acc = sess.run([optimizer, loss, recall20], feed_dict={x: curr_input, y:curr_output})
-            total_accuracy += acc
-            # curr_acc_of_all = np.sum(np.array(total_accuracy))/len(total_accuracy)
-            if (i+1) % display_step == 0:
+            # if (i) % display_step == 0:
+            #     print("Start training")
+            _, cost, top_items_20 = sess.run([optimizer, loss, top_items], feed_dict={x: curr_input, y:curr_output})
+            # total_accuracy += acc
+            total_cost += cost
+            total_accuracy +=  recall20(top_items_20, curr_output)
+            if i % display_step == 0 :
                 print("Step: " + str(i))
-                print("Accuracy: " + str(acc))
-                print("Curr accuracy from begin: " + str(total_accuracy/display_step))
-                print("Cost: " + str(cost))
+                # print("Accuracy: " + str(acc))
+                print("Avarage accuracy: " + str(total_accuracy/display_step))
+                print("Cost: " + str(total_cost/display_step))
                 print("\n\n")
-                cost = 0
-                curr_acc_of_all = 0
+                total_cost = 0.0
+                total_accuracy = 0.0
     # total_accuracy = np.sum(np.array(total_accuracy))/len(total_accuracy)
     print("\n\n\nFinish: \n Acc:{}\n Cost:{}\n".format(total_accuracy, cost))
