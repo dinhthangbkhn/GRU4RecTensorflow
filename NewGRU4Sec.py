@@ -46,23 +46,32 @@ def shuffle_data(data_input, data_target):
     print("End shuffle the data")
     return data_input_shuffle, data_target_shuffle
 
+def calc_recall20(target, rnn_top20):
+    recall = 0
+    for i in range(rnn_top20.shape[0]):
+        for j in range(rnn_top20.shape[1]):
+            if target[i][j] in rnn_top20[i][j]:
+                recall += 1
+    return recall/rnn_top20.shape[1]
+
+
 # shuffle_data(input, output)
 
 #SET UP PARAMETER
-n_hidden = 10
+n_hidden = 200
 batch_size = 1
 n_items = 6751
 seq_max_len = 80
 init_scale = 0.05
 learning_rate = 0.01
-epochs = 2
+epochs = 20
+display_step = 100
 
 x = tf.placeholder(tf.int32, [batch_size, None])
 y = tf.placeholder(tf.int32, [batch_size, None])
 x_length = tf.placeholder(tf.int32)
 embedding = tf.Variable(tf.random_uniform([n_items, n_hidden], -init_scale, init_scale))
 inputs = tf.nn.embedding_lookup(embedding, x)
-print(inputs)
 # rnn_layers = [tf.nn.rnn_cell.GRUCell(size) for size in [n_hidden]]
 # multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
 cell = tf.contrib.rnn.GRUCell(n_hidden)
@@ -73,16 +82,15 @@ softmax_w = tf.Variable(tf.random_uniform([n_hidden, n_items], -init_scale, init
 softmax_b = tf.Variable(tf.random_uniform([n_items], -init_scale, init_scale))
 logits = tf.nn.xw_plus_b(outputs, softmax_w, softmax_b)
 logits = tf.reshape(logits, [batch_size, -1, n_items])
-print(logits)
 loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits = logits,labels =  y)
-
+loss = tf.reduce_mean(loss) 
 # logits = tf.reshape(logits, [batch_size, -1, n_items])
 # print(logits)
 # loss = tf.contrib.seq2seq.sequence_loss(logits, y, tf.ones([batch_size, seq_max_len], dtype=tf.float32), average_across_timesteps=False, average_across_batch=True)
 # loss = tf.reduce_mean(loss)
 
 optimizer = tf.train.RMSPropOptimizer(learning_rate).minimize(loss)
-top20 = tf.nn.top_k(logits, 20)
+top20 = tf.nn.top_k(logits, 20).indices
 
 with tf.Session() as sess:
     init = tf.global_variables_initializer()
@@ -90,14 +98,26 @@ with tf.Session() as sess:
     data_input, data_output, nitems = create_data(FILE_TEST)
     for _ in range(epochs):
         data_input, data_output = shuffle_data(data_input, data_output)
+        total_loss = 0
+        total_recall = 0
         for i in range(len(data_input)):
             curr_input = np.array([data_input[i]])
             curr_output = np.array([data_output[i]])
+            
+            _, output_rnn_value, loss_value, top20_value = sess.run([ optimizer,outputs_rnn, loss, top20], feed_dict = {x: curr_input, y: curr_output, x_length: len(curr_input[0])})
+            # print(output_rnn_value)
+            # print(loss_value)
+            # print(top20_value)
+            recall = calc_recall20(curr_output, top20_value)
+            total_loss += loss_value
+            total_recall += recall
 
-            print(curr_input.shape)
-            # print(len(curr_input[1]))
-            print(curr_output.shape)
-            output_rnn_value, loss_value = sess.run([outputs_rnn, loss], feed_dict = {x: curr_input, y: curr_output, x_length: len(curr_input[0])})
-            print(output_rnn_value)
-            print(loss_value)
-            break
+            if i% display_step == 0:
+                total_loss = total_loss/ display_step
+                total_recall = total_recall/ display_step
+                
+                print("Step " + str(i))
+                print("Loss: " + str(total_loss))
+                print("Recall: " + str(total_recall))
+                total_loss = 0
+                total_recall = 0
