@@ -1,6 +1,7 @@
 import tensorflow as tf 
 import numpy as np 
 import win_unicode_console
+from matplotlib import pyplot as plt
 win_unicode_console.enable()
 
 FILE_TRAIN = "../data/gr2-sessions/train.txt"
@@ -58,14 +59,14 @@ def calc_recall20(target, rnn_top20):
 # shuffle_data(input, output)
 
 #SET UP PARAMETER
-n_hidden = 200
+n_hidden = 100
 batch_size = 1
 n_items = 6751
 seq_max_len = 80
 init_scale = 0.05
 learning_rate = 0.01
-epochs = 20
-display_step = 100
+epochs = 50
+display_step = 1000
 
 x = tf.placeholder(tf.int32, [batch_size, None])
 y = tf.placeholder(tf.int32, [batch_size, None])
@@ -95,11 +96,14 @@ top20 = tf.nn.top_k(logits, 20).indices
 with tf.Session() as sess:
     init = tf.global_variables_initializer()
     sess.run(init)
+    list_recall = []
+    list_loss = []
     data_input, data_output, nitems = create_data(FILE_TEST)
-    for _ in range(epochs):
-        data_input, data_output = shuffle_data(data_input, data_output)
-        total_loss = 0
-        total_recall = 0
+    count = 1
+    total_loss = 0
+    total_recall = 0
+    for epo in range(epochs):
+        data_input, data_output = shuffle_data(data_input, data_output)    
         for i in range(len(data_input)):
             curr_input = np.array([data_input[i]])
             curr_output = np.array([data_output[i]])
@@ -111,13 +115,32 @@ with tf.Session() as sess:
             recall = calc_recall20(curr_output, top20_value)
             total_loss += loss_value
             total_recall += recall
-
-            if i% display_step == 0:
+            count += 1
+            if count % display_step == 0:
                 total_loss = total_loss/ display_step
                 total_recall = total_recall/ display_step
-                
-                print("Step " + str(i))
+                list_recall.append(total_recall)
+                list_loss.append(total_loss)
+                print("Step " + str(count) + " Epoch " + str(epo))
                 print("Loss: " + str(total_loss))
                 print("Recall: " + str(total_recall))
                 total_loss = 0
                 total_recall = 0
+    with open("resutl_hidden100_rate0_01.txt","w") as file:
+        file.write("Recall\n")
+        for re in list_recall:
+            file.write(str(re))
+            
+        file.write("Loss\n")
+        for lo in list_loss:
+            file.write(str(lo))
+            file.write("\n")
+    plt.plot(list_recall)
+    plt.xlabel("Step * 1000 (s)")
+    plt.ylabel("Recall")
+    plt.show()
+
+    plt.plot(list_loss) 
+    plt.xlabel("Step * 1000 (s)")
+    plt.ylabel("Loss")
+    plt.show()
