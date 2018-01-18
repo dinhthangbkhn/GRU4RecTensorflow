@@ -59,7 +59,7 @@ def calc_recall20(target, rnn_top20):
 # shuffle_data(input, output)
 
 #SET UP PARAMETER
-n_hidden = 100
+n_hidden = 500
 batch_size = 1
 n_items = 6751
 seq_max_len = 80
@@ -126,7 +126,7 @@ with tf.Session() as sess:
                 print("Recall: " + str(total_recall))
                 total_loss = 0
                 total_recall = 0
-    with open("resutl_hidden100_rate0_01.txt","w") as file:
+    with open("resutl_hidden500_rate0_01.txt","w") as file:
         file.write("Recall\n")
         for re in list_recall:
             file.write(str(re))
